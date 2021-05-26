@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./style.css">
+    <script src="./main.js"></script>
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&family=Poppins:wght@700&display=swap" rel="stylesheet"> 
+    <title>About Me - Cristi Mandici</title>
+    <link rel="shortcut icon" href="./img/favicon.png" type="image/x-icon">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BmbxuPwQa2lc/FVzBcNJ7UAyJxM6wuqIj61tLrc4wSX0szH/Ev+nYRRuWlolflfl" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta2/dist/js/bootstrap.bundle.min.js" integrity="sha384-b5kHyXgcpbZJO/tY9Ul7kGkf1S0CWuKcCD38l8YkeH8z8QjE0GmW1gYU5S9FOnJ0" crossorigin="anonymous"></script>
+
+
+</head>
+<body>
+    <header id="header">
+        <object class="header__fragment" data="./fragments/header.html" type=""></object>
+    </header>
+
+    <main>
+        <div class="head__image__section"> 
+            <div class="head__full__section">
+                <br>
+                <br>
+                <center><h1>About Me</h1></center>
+            </div>
+        </div>
+
+        <div class="main__box">
+        <center><h1 class="bold__font h1f">MY DESIGNS</h1></center>
+        <br>
+        <br>
+            
+                <div class="row">
+                    <div class="col-lg">
+                        <div class="thumbnail">
+                            <img onclick="expand(this.id)" id="d1" class="img-fluid img-rounded" src="./img/design1.png" alt="">
+                        </div>
+                    </div>
+
+                    <div class="col-lg">
+                        <div class="thumbnail">
+                            <img onclick="expand(this.id)" id="d2" class="img-fluid" src="./img/design2.png" alt="">
+                        </div>
+                    </div>
+                    <div class="col-lg">
+                        <div class="thumbnail">
+                            <img onclick="expand(this.id)" id="d3" class="img-fluid" src="./img/design3.png" alt="">
+                        </div>
+                    </div>
+                </div>
+
+                <center><h1 style="padding-top: 200px" class="bold__font h1f">MY HOBBIES</h1></center>
+                <br>
+                <br>
+
+                <div class="row">
+                    <div class="col-lg">
+                        <div class="thumbnail">
+                            <center><h3 class="bold__font">PIANO</h3></center>
+                            <img onclick="expand(this.id)" id="p5" class="img-fluid img-rounded" src="./img/hobby_piano.png" alt="">
+                            <center><h4 style="padding-top: 10px">Playing piano calms me</h4></center>
+                        </div>
+                    </div>
+
+                    <div class="col-lg">
+                        <div class="thumbnail">
+                            <center><h3 class="bold__font">FOOTBALL</h3></center>
+                            <img onclick="expand(this.id)" id="p6" class="img-fluid" src="./img/hobby_football.png" alt="">
+                            <center><h4 style="padding-top: 10px">Football challenges me</h4></center>
+                        </div>
+                    </div>
+                    <div class="col-lg">
+                        <div class="thumbnail">
+                            <center><h3 class="bold__font">RUNNING</h3></center>
+                            <img onclick="expand(this.id)" id="p7" class="img-fluid" src="./img/hobby_running.png" alt="">
+                            <center><h4 style="padding-top: 10px">When I run, I forget about everything</h4></center>
+                        </div>
+                    </div>
+                </div>
+        </div>
+<br>
+<br>
+<br>
+
+        <div id="imggallery" class="modal">
+            <div onclick="expandclose()" class="close">&times;</div>  
+            <!-- Image Window -->
+            <div class="modal-content">
+            
+                <img class="gallery__image__expanded" id="expandedimg" style="height: 80vh; width: auto;" src="" alt="">
+            </div>
+          
+        </div>
+
+    </main>
+
+    <footer id="footer">
+        <object class="footer__fragment" data="./fragments/footer.html" type=""></object>
+    </footer>
+
+    <script>
+        /* Image Popup Window */
+        function expand(clicked_id) {
+            var image = clicked_id
+            document.getElementById('expandedimg').src = document.getElementById(image).src
+            document.getElementById('imggallery').style.display = "block";
+        }
+
+        function expandclose(){
+            document.getElementById('imggallery').style.display = "none";
+        }
+    </script>
+
+</body>
+</html>
