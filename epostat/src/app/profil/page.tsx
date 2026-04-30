@@ -1,11 +1,11 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   BadgeCheck, Star, Edit3, Package, TrendingDown,
   Heart, ChevronRight, Plus, ShieldCheck, Phone, Mail,
-  Save, X, LogOut,
+  Save, X, LogOut, Upload, Clock,
 } from 'lucide-react';
 import AdCard from '@/components/ads/AdCard';
 import Button from '@/components/ui/Button';
@@ -86,6 +86,10 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', phone: '', city: '' });
   const [saving, setSaving] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState<'none' | 'pending' | 'verified'>('none');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const verifyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -111,6 +115,12 @@ export default function ProfilePage() {
         city: prof?.city || '',
       });
 
+      if (prof?.verified) {
+        setVerifyStatus('verified');
+      } else if (localStorage.getItem(`epostat_id_pending_${user.id}`) === 'true') {
+        setVerifyStatus('pending');
+      }
+
       const sellerMeta = {
         seller_id: user.id,
         seller_name: prof?.name,
@@ -124,10 +134,18 @@ export default function ProfilePage() {
       setMyAds(allAds.filter(a => a.status === 'activ').map(a => mapAd({ ...a, ...sellerMeta })));
       setSoldAds(allAds.filter(a => a.status === 'vandut').map(a => mapAd({ ...a, ...sellerMeta })));
 
-      const adIds = ((favIdsRes.data || []) as Record<string, unknown>[]).map(f => f.ad_id);
+      const adIds = ((favIdsRes.data || []) as Record<string, unknown>[]).map(f => f.ad_id as string);
       if (adIds.length > 0) {
-        const { data: favAds } = await supabase.from('ads_with_seller').select('*').in('id', adIds);
-        setFavorites((favAds || []).map(a => mapAd(a as Record<string, unknown>)));
+        const { data: favAds } = await supabase.from('ads').select('*').in('id', adIds);
+        const favSellerIds = [...new Set((favAds || []).map(a => a.seller_id as string))];
+        const { data: favProfiles } = favSellerIds.length > 0
+          ? await supabase.from('profiles').select('id, name, avatar_url, rating, review_count, verified').in('id', favSellerIds)
+          : { data: [] };
+        const favProfMap = Object.fromEntries((favProfiles || []).map(p => [p.id, p]));
+        setFavorites((favAds || []).map(a => {
+          const sp = favProfMap[a.seller_id as string];
+          return mapAd({ ...a, seller_id: a.seller_id, seller_name: sp?.name ?? 'Utilizator', seller_avatar: sp?.avatar_url ?? null, seller_rating: sp?.rating ?? 5, seller_review_count: sp?.review_count ?? 0, seller_verified: sp?.verified ?? false } as Record<string, unknown>);
+        }));
       }
 
       setOffers((offersRes.data || []) as typeof offers);
@@ -138,12 +156,14 @@ export default function ProfilePage() {
 
   const saveProfile = async () => {
     setSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setSaving(false); return; }
     await supabase.from('profiles').update({
       name: editForm.name,
       phone: editForm.phone || null,
       city: editForm.city || null,
       updated_at: new Date().toISOString(),
-    }).eq('id', userId);
+    }).eq('id', user.id);
     setProfile(p => p ? { ...p, ...editForm } : p);
     setEditing(false);
     setSaving(false);
@@ -153,6 +173,24 @@ export default function ProfilePage() {
     await supabase.auth.signOut();
     router.push('/');
     router.refresh();
+  };
+
+  const handleVerifyUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setVerifyLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setVerifyLoading(false); return; }
+    const ext = file.name.split('.').pop();
+    const path = `${user.id}/id.${ext}`;
+    const { error } = await supabase.storage.from('verification-docs').upload(path, file, { upsert: true });
+    if (!error) {
+      localStorage.setItem(`epostat_id_pending_${user.id}`, 'true');
+      setVerifyStatus('pending');
+      setVerifyOpen(false);
+    }
+    setVerifyLoading(false);
+    if (verifyInputRef.current) verifyInputRef.current.value = '';
   };
 
   if (loading) {
@@ -255,18 +293,86 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                { icon: <Mail className="w-4 h-4" />, label: 'Email verificat', done: emailVerified },
-                { icon: <Phone className="w-4 h-4" />, label: 'Telefon adăugat', done: phoneVerified },
-                { icon: <ShieldCheck className="w-4 h-4" />, label: 'Identitate verificată', done: !!(profile?.verified) },
-              ].map(({ icon, label, done }) => (
-                <div key={label} className={cn('flex items-center gap-2 px-3 py-2 rounded-xl text-sm', done ? 'bg-green-50 text-green-700' : 'bg-slate-50 text-slate-500')}>
-                  {icon}
-                  <span className="font-medium">{label}</span>
-                  {done ? <BadgeCheck className="w-4 h-4 ml-auto" /> : <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />}
-                </div>
-              ))}
+              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-xl text-sm', emailVerified ? 'bg-green-50 text-green-700' : 'bg-slate-50 text-slate-500')}>
+                <Mail className="w-4 h-4" />
+                <span className="font-medium">Email verificat</span>
+                {emailVerified ? <BadgeCheck className="w-4 h-4 ml-auto" /> : <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />}
+              </div>
+              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-xl text-sm', phoneVerified ? 'bg-green-50 text-green-700' : 'bg-slate-50 text-slate-500')}>
+                <Phone className="w-4 h-4" />
+                <span className="font-medium">Telefon adăugat</span>
+                {phoneVerified ? <BadgeCheck className="w-4 h-4 ml-auto" /> : <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />}
+              </div>
+              <button
+                onClick={() => { if (verifyStatus === 'none') setVerifyOpen(v => !v); }}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-left transition',
+                  verifyStatus === 'verified' ? 'bg-green-50 text-green-700' :
+                  verifyStatus === 'pending' ? 'bg-amber-50 text-amber-700' :
+                  'bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 cursor-pointer'
+                )}>
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span className="font-medium">
+                  {verifyStatus === 'verified' ? 'Identitate verificată' :
+                   verifyStatus === 'pending' ? 'În verificare' :
+                   'Verifică identitatea'}
+                </span>
+                {verifyStatus === 'verified' ? <BadgeCheck className="w-4 h-4 ml-auto" /> :
+                 verifyStatus === 'pending' ? <Clock className="w-4 h-4 ml-auto" /> :
+                 <ChevronRight className="w-4 h-4 ml-auto text-slate-400" />}
+              </button>
             </div>
+
+            {/* Identity verification panel */}
+            {verifyOpen && verifyStatus === 'none' && (
+              <div className="mt-4 p-4 rounded-2xl border border-blue-200 bg-blue-50">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="font-bold text-slate-900 text-sm">Verifică-ți identitatea</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Încarcă o fotografie clară a actului de identitate (față). Vom verifica în maxim 24h.</p>
+                  </div>
+                  <button onClick={() => setVerifyOpen(false)} className="text-slate-400 hover:text-slate-600 ml-3 shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <input
+                  ref={verifyInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleVerifyUpload}
+                />
+                <button
+                  onClick={() => verifyInputRef.current?.click()}
+                  disabled={verifyLoading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50">
+                  {verifyLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4" />
+                  )}
+                  {verifyLoading ? 'Se încarcă...' : 'Alege document'}
+                </button>
+                <p className="text-xs text-slate-400 mt-2">JPG, PNG sau WebP · Max 10MB · Datele sunt confidențiale</p>
+              </div>
+            )}
+
+            {verifyStatus === 'pending' && (
+              <div className="mt-4 p-3 rounded-2xl border border-amber-200 bg-amber-50 flex items-center gap-3 text-sm text-amber-700">
+                <Clock className="w-4 h-4 shrink-0" />
+                <span className="flex-1">Documentul tău a fost trimis. Vom verifica identitatea în maxim 24 de ore.</span>
+                <button
+                  onClick={async () => {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) localStorage.removeItem(`epostat_id_pending_${user.id}`);
+                    setVerifyStatus('none');
+                    setVerifyOpen(true);
+                  }}
+                  className="text-xs font-semibold underline hover:no-underline shrink-0">
+                  Retrimite
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -294,7 +400,17 @@ export default function ProfilePage() {
           </div>
           {myAds.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {myAds.map(ad => <AdCard key={ad.id} ad={ad} />)}
+              {myAds.map(ad => (
+                <AdCard
+                  key={ad.id}
+                  ad={ad}
+                  favorited={favorites.some(f => f.id === ad.id)}
+                  onFavoriteToggle={(id, nowFav) => {
+                    if (nowFav) setFavorites(prev => prev.some(f => f.id === id) ? prev : [...prev, ad]);
+                    else setFavorites(prev => prev.filter(f => f.id !== id));
+                  }}
+                />
+              ))}
             </div>
           ) : (
             <EmptyState emoji="📦" title="Nu ai niciun anunț activ"
@@ -340,7 +456,16 @@ export default function ProfilePage() {
         <div>
           {favorites.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {favorites.map(ad => <AdCard key={ad.id} ad={ad} favorited />)}
+              {favorites.map(ad => (
+                <AdCard
+                  key={ad.id}
+                  ad={ad}
+                  favorited
+                  onFavoriteToggle={(id, nowFav) => {
+                    if (!nowFav) setFavorites(prev => prev.filter(a => a.id !== id));
+                  }}
+                />
+              ))}
             </div>
           ) : (
             <EmptyState emoji="❤️" title="Nu ai anunțuri favorite"
