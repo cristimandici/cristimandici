@@ -101,6 +101,13 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
       const mapped = mapAd(combined as Record<string, unknown>);
       setAd(mapped);
 
+      // Track recently viewed (for homepage section)
+      try {
+        const existing = JSON.parse(localStorage.getItem('epostat_viewed') || '[]') as string[];
+        const updated = [id, ...existing.filter((i: string) => i !== id)].slice(0, 12);
+        localStorage.setItem('epostat_viewed', JSON.stringify(updated));
+      } catch {}
+
       // Increment views
       supabase.from('ads').update({ views: (adRow.views || 0) + 1 }).eq('id', id);
 
@@ -361,7 +368,7 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
                       <img src={ad.seller.avatar} alt={ad.seller.name}
                         className="w-12 h-12 rounded-full border-2 border-slate-200 object-cover" />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-black">
+                      <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-white font-black">
                         {ad.seller.name[0]?.toUpperCase()}
                       </div>
                     )}
@@ -405,7 +412,7 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
         {related.length > 0 && (
           <section className="mt-12">
             <h2 className="text-xl font-black text-slate-900 mb-5">Anunțuri similare</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {related.map(a => <AdCard key={a.id} ad={a} />)}
             </div>
           </section>

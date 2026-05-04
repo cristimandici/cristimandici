@@ -294,7 +294,7 @@ export default function ProfilePage() {
                   <img src={profile.avatar_url} alt={profile.name}
                     className="w-20 h-20 rounded-2xl border-2 border-slate-200 object-cover" />
                 ) : (
-                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black">
+                  <div className="w-20 h-20 rounded-2xl bg-slate-800 flex items-center justify-center text-white text-2xl font-black">
                     {profile?.name?.[0]?.toUpperCase() || '?'}
                   </div>
                 )}
@@ -474,7 +474,7 @@ export default function ProfilePage() {
           {/* Active ads */}
           {listingsSubTab === 'active' && (
             myAds.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {myAds.map(ad => (
                   <div key={ad.id} className="flex flex-col gap-2">
                     <AdCard
@@ -533,7 +533,7 @@ export default function ProfilePage() {
           {/* Draft ads */}
           {listingsSubTab === 'draft' && (
             draftAds.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {draftAds.map(ad => (
                   <div key={ad.id} className="flex flex-col gap-2 bg-white rounded-2xl border border-dashed border-slate-300 overflow-hidden">
                     <div className="aspect-[4/3] bg-slate-100 relative">
@@ -618,7 +618,7 @@ export default function ProfilePage() {
       {/* Sold */}
       {tab === 'sold' && (
         soldAds.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {soldAds.map(ad => (
               <div key={ad.id} className="flex flex-col gap-2">
                 <AdCard ad={ad} />
