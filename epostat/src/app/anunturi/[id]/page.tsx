@@ -354,8 +354,9 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
 
               {/* Seller card */}
               <div className="bg-white rounded-3xl border border-slate-200/80 p-5 mt-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="relative">
+                <Link href={currentUserId === ad.seller.id ? '/profil' : `/utilizator/${ad.seller.id}`}
+                  className="flex items-center gap-3 mb-4 group rounded-2xl hover:bg-slate-50 transition -mx-1 px-1 py-1">
+                  <div className="relative shrink-0">
                     {ad.seller.avatar ? (
                       <img src={ad.seller.avatar} alt={ad.seller.name}
                         className="w-12 h-12 rounded-full border-2 border-slate-200 object-cover" />
@@ -369,7 +370,7 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-slate-900">{ad.seller.name}</p>
+                    <p className="font-bold text-slate-900 group-hover:text-blue-600 transition">{ad.seller.name}</p>
                     <div className="flex items-center gap-1 text-xs text-slate-500">
                       <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
                       <span>{Number(ad.seller.rating).toFixed(1)}</span>
@@ -377,11 +378,11 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
                     </div>
                   </div>
                   {ad.seller.verified && (
-                    <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                    <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full shrink-0">
                       <ShieldCheck className="w-3 h-3" /> Verificat
                     </span>
                   )}
-                </div>
+                </Link>
 
                 {ad.seller.phone ? (
                   <a href={`tel:${ad.seller.phone}`}>
