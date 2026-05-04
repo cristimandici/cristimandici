@@ -1,21 +1,14 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
-  Tag, FileText, ImagePlus, DollarSign, Check,
-  ChevronRight, ChevronLeft, AlertCircle, Upload, X, Sparkles,
+  Check, ChevronDown, AlertCircle, Upload, X, Sparkles, MapPin, ImagePlus,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { CATEGORIES } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
-
-const STEPS = [
-  { id: 1, label: 'Categorie', icon: <Tag className="w-5 h-5" /> },
-  { id: 2, label: 'Detalii', icon: <FileText className="w-5 h-5" /> },
-  { id: 3, label: 'Foto', icon: <ImagePlus className="w-5 h-5" /> },
-  { id: 4, label: 'Preț & Publicare', icon: <DollarSign className="w-5 h-5" /> },
-];
 
 const CONDITIONS = [
   { value: 'nou', label: 'Nou', desc: 'Produs sigilat, neutilizat' },
@@ -32,6 +25,18 @@ const CAT_ICONS: Record<string, string> = {
   'Sofa': '🛋️', 'Dumbbell': '🏋️', 'Baby': '🧸', 'PawPrint': '🐾',
   'Wrench': '🔧',
 };
+
+const CONDITION_LABELS: Record<string, string> = {
+  'nou': 'Nou', 'ca-nou': 'Ca nou', 'buna-stare': 'Stare bună',
+  'uzura-normala': 'Uzură normală', 'necesita-reparatii': 'Necesită reparații',
+};
+
+const SECTIONS = [
+  { id: 1, label: 'Categorie' },
+  { id: 2, label: 'Detalii produs' },
+  { id: 3, label: 'Fotografii' },
+  { id: 4, label: 'Preț & Publicare' },
+];
 
 interface FormData {
   category: string;
@@ -56,12 +61,14 @@ const EMPTY_FORM: FormData = {
 export default function PostPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState(1);
+  const [openStep, setOpenStep] = useState<number | null>(1);
+  const [visited, setVisited] = useState<Set<number>>(new Set());
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [publishedId, setPublishedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+  const [previewIdx, setPreviewIdx] = useState(0);
 
   const set = (key: keyof FormData, value: unknown) =>
     setForm((p) => ({ ...p, [key]: value }));
@@ -78,16 +85,24 @@ export default function PostPage() {
     prefillFromProfile();
   }, []);
 
-  const validate = (): boolean => {
+  const isComplete = (s: number): boolean => {
+    if (s === 1) return !!form.category;
+    if (s === 2) return form.title.length >= 5 && !!form.condition && form.description.length >= 20;
+    if (s === 3) return form.imageUrls.length >= 3;
+    if (s === 4) return Number(form.price) > 0 && !!form.city;
+    return false;
+  };
+
+  const validateStep = (s: number): boolean => {
     const e: typeof errors = {};
-    if (step === 1 && !form.category) e.category = 'Hopa, alege o categorie 🙂';
-    if (step === 2) {
+    if (s === 1 && !form.category) e.category = 'Hopa, alege o categorie 🙂';
+    if (s === 2) {
       if (!form.title || form.title.length < 5) e.title = 'Titlul trebuie să aibă cel puțin 5 caractere.';
       if (!form.condition) e.condition = 'Selectează starea produsului.';
       if (!form.description || form.description.length < 20) e.description = 'Adaugă o descriere mai detaliată (min. 20 caractere).';
     }
-    if (step === 3 && form.imageUrls.length === 0) e.images = 'Adaugă cel puțin o fotografie 📸';
-    if (step === 4) {
+    if (s === 3 && form.imageUrls.length < 3) e.images = 'Adaugă cel puțin 3 fotografii 📸';
+    if (s === 4) {
       if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0) e.price = 'Introdu un preț valid.';
       if (!form.city) e.city = 'Alege un oraș.';
     }
@@ -95,8 +110,17 @@ export default function PostPage() {
     return Object.keys(e).length === 0;
   };
 
-  const next = () => { if (validate()) setStep((s) => s + 1); };
-  const prev = () => setStep((s) => s - 1);
+  const toggleStep = (s: number) => {
+    setVisited(prev => new Set([...prev, s]));
+    setOpenStep(prev => (prev === s ? null : s));
+  };
+
+  const continueStep = (s: number) => {
+    if (!validateStep(s)) return;
+    setVisited(prev => new Set([...prev, s]));
+    const next = s < 4 ? s + 1 : null;
+    setOpenStep(next);
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -123,7 +147,7 @@ export default function PostPage() {
 
       if (!error) {
         const { data: { publicUrl } } = supabase.storage.from('ad-images').getPublicUrl(path);
-        set('imageUrls', [...form.imageUrls, publicUrl]);
+        setForm(prev => ({ ...prev, imageUrls: [...prev.imageUrls, publicUrl] }));
         setErrors((p) => ({ ...p, images: undefined }));
       }
     }
@@ -131,11 +155,13 @@ export default function PostPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const removeImage = (i: number) =>
+  const removeImage = (i: number) => {
     set('imageUrls', form.imageUrls.filter((_, idx) => idx !== i));
+    setPreviewIdx(p => (p >= i && p > 0 ? p - 1 : p));
+  };
 
   const handlePublish = async () => {
-    if (!validate()) return;
+    if (!validateStep(4)) return;
     setLoading(true);
 
     const supabase = createClient();
@@ -166,7 +192,6 @@ export default function PostPage() {
       return;
     }
 
-    // Update seller phone if provided
     if (form.phone) {
       await supabase.from('profiles').update({ phone: form.phone }).eq('id', user.id);
     }
@@ -177,270 +202,421 @@ export default function PostPage() {
 
   if (publishedId) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-20 text-center">
-        <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-          <Check className="w-10 h-10 text-green-500" />
+      <>
+        <TopBar />
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="max-w-lg w-full text-center py-16">
+            <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+              <Check className="w-10 h-10 text-green-500" />
+            </div>
+            <h1 className="text-3xl font-black text-slate-900 mb-3">E postat! 🎉</h1>
+            <p className="text-slate-500 mb-2">Anunțul tău pentru <strong className="text-slate-800">{form.title}</strong> este acum live.</p>
+            <p className="text-slate-400 text-sm mb-8">Mii de cumpărători îl pot vedea deja.</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button onClick={() => router.push(`/anunturi/${publishedId}`)} variant="primary" size="lg">
+                <Sparkles className="w-4 h-4" /> Vezi anunțul
+              </Button>
+              <Button onClick={() => { setForm(EMPTY_FORM); setOpenStep(1); setVisited(new Set()); setPublishedId(null); }} variant="secondary" size="lg">
+                Postează altul
+              </Button>
+            </div>
+          </div>
         </div>
-        <h1 className="text-3xl font-black text-slate-900 mb-3">E postat! 🎉</h1>
-        <p className="text-slate-500 mb-2">Anunțul tău pentru <strong className="text-slate-800">{form.title}</strong> este acum live.</p>
-        <p className="text-slate-400 text-sm mb-8">Mii de cumpărători îl pot vedea deja.</p>
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button onClick={() => router.push(`/anunturi/${publishedId}`)} variant="primary" size="lg">
-            <Sparkles className="w-4 h-4" /> Vezi anunțul
-          </Button>
-          <Button onClick={() => { setForm(EMPTY_FORM); setStep(1); setPublishedId(null); }} variant="secondary" size="lg">
-            Postează altul
-          </Button>
-        </div>
-      </div>
+      </>
     );
   }
 
+  const completedCount = [1, 2, 3, 4].filter(isComplete).length;
+  const progress = (completedCount / 4) * 100;
+  const cat = CATEGORIES.find(c => c.id === form.category);
+
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
-      <div className="mb-8">
-        <h1 className="text-2xl font-black text-slate-900 mb-1">Postează un anunț nou</h1>
-        <p className="text-slate-500 text-sm">Gratuit · Durează sub 2 minute</p>
+    <>
+      {/* ── Top bar ── */}
+      <TopBar />
+
+      {/* ── Progress bar ── */}
+      <div className="w-full h-2 bg-slate-100 shrink-0">
+        <div
+          className="h-full bg-[#2563EB] transition-all duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
       </div>
 
-      {/* Progress */}
-      <div className="mb-8">
-        <div className="flex items-center gap-0">
-          {STEPS.map((s, i) => (
-            <div key={s.id} className="flex items-center flex-1 last:flex-none">
-              <div className="flex flex-col items-center">
-                <div className={cn(
-                  'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all',
-                  step > s.id ? 'bg-green-500 text-white' : step === s.id ? 'bg-[#2563EB] text-white shadow-lg scale-110' : 'bg-slate-200 text-slate-500'
-                )}>
-                  {step > s.id ? <Check className="w-5 h-5" /> : s.icon}
-                </div>
-                <span className={cn('text-xs mt-1.5 font-medium hidden sm:block', step === s.id ? 'text-blue-600' : step > s.id ? 'text-green-600' : 'text-slate-400')}>
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={cn('flex-1 h-0.5 mx-2 transition-all', step > s.id ? 'bg-green-400' : 'bg-slate-200')} />
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="mt-3 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-[#2563EB] to-[#7C3AED] rounded-full transition-all duration-500"
-            style={{ width: `${((step - 1) / (STEPS.length - 1)) * 100}%` }}
-          />
-        </div>
-      </div>
+      {/* ── Main split ── */}
+      <div className="flex flex-1 overflow-hidden">
 
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm">
-        {/* Step 1: Category */}
-        {step === 1 && (
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 mb-1">Ce vinzi?</h2>
-            <p className="text-sm text-slate-500 mb-5">Alege categoria potrivită pentru produsul tău.</p>
-            {errors.category && <ErrorMsg msg={errors.category} />}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => { set('category', cat.id); setErrors({}); }}
-                  className={cn(
-                    'p-4 rounded-2xl border-2 text-left transition-all',
-                    form.category === cat.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                  )}
-                >
-                  <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center mb-2.5', cat.color)}>
-                    <span className="text-lg">{CAT_ICONS[cat.icon] ?? '📦'}</span>
-                  </div>
-                  <p className="font-semibold text-slate-800 text-sm">{cat.name}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* LEFT: scrollable form */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-[560px] mx-auto px-6 sm:px-10 py-10">
 
-        {/* Step 2: Details */}
-        {step === 2 && (
-          <div className="flex flex-col gap-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 mb-1">Detalii produs</h2>
-              <p className="text-sm text-slate-500">Descrie produsul cât mai complet.</p>
+            <div className="mb-6">
+              <h1 className="text-2xl font-black text-slate-900">Postează anunțul tău</h1>
+              <p className="text-slate-500 text-sm mt-1">Gratuit · Sub 2 minute</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Titlu anunț <span className="text-red-400">*</span></label>
-              <input type="text" value={form.title} onChange={(e) => { set('title', e.target.value); setErrors((p) => ({ ...p, title: undefined })); }}
-                placeholder="Ex: iPhone 14 Pro Max 256GB – Space Black, ca nou" maxLength={80}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-              <div className="flex justify-between mt-1">
-                {errors.title ? <ErrorMsg msg={errors.title} /> : <span />}
-                <span className="text-xs text-slate-400">{form.title.length}/80</span>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Stare produs <span className="text-red-400">*</span></label>
-              {errors.condition && <ErrorMsg msg={errors.condition} />}
-              <div className="grid grid-cols-1 gap-2">
-                {CONDITIONS.map((c) => (
-                  <label key={c.value} className={cn('flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all', form.condition === c.value ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300')}>
-                    <input type="radio" name="condition" value={c.value} checked={form.condition === c.value}
-                      onChange={() => { set('condition', c.value); setErrors((p) => ({ ...p, condition: undefined })); }}
-                      className="mt-0.5 text-blue-600 focus:ring-blue-500" />
-                    <div>
-                      <p className="font-semibold text-sm text-slate-800">{c.label}</p>
-                      <p className="text-xs text-slate-500">{c.desc}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Descriere <span className="text-red-400">*</span></label>
-              <textarea value={form.description} onChange={(e) => { set('description', e.target.value); setErrors((p) => ({ ...p, description: undefined })); }}
-                placeholder="Descrie starea produsului, ce include, motivul vânzării..." rows={5} maxLength={2000}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-              <div className="flex justify-between mt-1">
-                {errors.description ? <ErrorMsg msg={errors.description} /> : <span />}
-                <span className="text-xs text-slate-400">{form.description.length}/2000</span>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Step 3: Photos */}
-        {step === 3 && (
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 mb-1">Fotografii</h2>
-            <p className="text-sm text-slate-500 mb-5">Anunțurile cu poze se vând de 5× mai repede. Adaugă până la 10 fotografii.</p>
-            {errors.images && <ErrorMsg msg={errors.images} className="mb-3" />}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              className="hidden"
-              onChange={handleFileChange}
-            />
-
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              {form.imageUrls.map((img, i) => (
-                <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                  <img src={img} alt={`Fotografie ${i + 1}`} className="w-full h-full object-cover" />
-                  {i === 0 && (
-                    <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-xs font-bold bg-blue-600 text-white">Principală</span>
-                  )}
-                  <button onClick={() => removeImage(i)}
-                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition">
-                    <X className="w-3.5 h-3.5" />
+            {/* Accordion */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm divide-y divide-slate-100 overflow-hidden">
+              {SECTIONS.map(s => (
+                <div key={s.id}>
+                  {/* Section header */}
+                  <button
+                    onClick={() => toggleStep(s.id)}
+                    className="flex items-center gap-4 w-full px-6 py-4 text-left hover:bg-slate-50/70 transition-colors"
+                  >
+                    {isComplete(s.id) ? (
+                      <div className="w-7 h-7 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+                        <Check className="w-4 h-4 text-white" />
+                      </div>
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-amber-400 flex items-center justify-center shrink-0">
+                        <span className="text-white font-bold text-sm leading-none">{s.id}</span>
+                      </div>
+                    )}
+                    <p className="flex-1 font-bold text-slate-900 text-sm">{s.label}</p>
+                    {visited.has(s.id) && !isComplete(s.id) && (
+                      <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mr-1">
+                        Incomplet
+                      </span>
+                    )}
+                    <ChevronDown className={cn('w-5 h-5 text-slate-400 transition-transform shrink-0', openStep === s.id && 'rotate-180')} />
                   </button>
+
+                  {/* Section content */}
+                  {openStep === s.id && (
+                    <div className="px-6 pb-6 pt-2">
+
+                      {/* Step 1: Category */}
+                      {s.id === 1 && (
+                        <div>
+                          {errors.category && <ErrorMsg msg={errors.category} className="mb-3" />}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {CATEGORIES.map((c) => (
+                              <button
+                                key={c.id}
+                                onClick={() => { set('category', c.id); setErrors({}); }}
+                                className={cn(
+                                  'p-4 rounded-2xl border-2 text-left transition-all',
+                                  form.category === c.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                )}
+                              >
+                                <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center mb-2.5', c.color)}>
+                                  <span className="text-lg">{CAT_ICONS[c.icon] ?? '📦'}</span>
+                                </div>
+                                <p className="font-semibold text-slate-800 text-sm">{c.name}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 2: Details */}
+                      {s.id === 2 && (
+                        <div className="flex flex-col gap-5">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Titlu anunț <span className="text-red-400">*</span></label>
+                            <input type="text" value={form.title} onChange={(e) => { set('title', e.target.value); setErrors((p) => ({ ...p, title: undefined })); }}
+                              placeholder="Ex: iPhone 14 Pro Max 256GB – Space Black, ca nou" maxLength={80}
+                              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                            <div className="flex justify-between mt-1">
+                              {errors.title ? <ErrorMsg msg={errors.title} /> : <span />}
+                              <span className="text-xs text-slate-400">{form.title.length}/80</span>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Stare produs <span className="text-red-400">*</span></label>
+                            {errors.condition && <ErrorMsg msg={errors.condition} />}
+                            <div className="grid grid-cols-1 gap-2 mt-2">
+                              {CONDITIONS.map((c) => (
+                                <label key={c.value} className={cn('flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all', form.condition === c.value ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300')}>
+                                  <input type="radio" name="condition" value={c.value} checked={form.condition === c.value}
+                                    onChange={() => { set('condition', c.value); setErrors((p) => ({ ...p, condition: undefined })); }}
+                                    className="mt-0.5 text-blue-600 focus:ring-blue-500" />
+                                  <div>
+                                    <p className="font-semibold text-sm text-slate-800">{c.label}</p>
+                                    <p className="text-xs text-slate-500">{c.desc}</p>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Descriere <span className="text-red-400">*</span></label>
+                            <textarea value={form.description} onChange={(e) => { set('description', e.target.value); setErrors((p) => ({ ...p, description: undefined })); }}
+                              placeholder="Descrie starea produsului, ce include, motivul vânzării..." rows={5} maxLength={2000}
+                              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                            <div className="flex justify-between mt-1">
+                              {errors.description ? <ErrorMsg msg={errors.description} /> : <span />}
+                              <span className="text-xs text-slate-400">{form.description.length}/2000</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 3: Photos */}
+                      {s.id === 3 && (
+                        <div>
+                          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-5">
+                            <span className="text-amber-500 text-lg shrink-0">📸</span>
+                            <div>
+                              <p className="text-sm font-semibold text-amber-800">Anunțurile cu 5+ fotografii se vând de 2× mai repede</p>
+                              <p className="text-xs text-amber-600 mt-0.5">Toate unghiurile · Close-up · Marcă &amp; etichetă · Uzură &amp; defecte</p>
+                            </div>
+                          </div>
+
+                          {errors.images && <ErrorMsg msg={errors.images} className="mb-3" />}
+
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            multiple
+                            className="hidden"
+                            onChange={handleFileChange}
+                          />
+
+                          {(() => {
+                            const filled = form.imageUrls.length;
+                            const isUp = uploadingIdx !== null;
+                            const slotCount = Math.min(10, Math.max(6, filled + (isUp ? 1 : 0) + (filled < 10 ? 1 : 0)));
+                            return (
+                              <div className="grid grid-cols-3 gap-3 mb-4">
+                                {Array.from({ length: slotCount }).map((_, i) => {
+                                  const url = form.imageUrls[i];
+                                  if (url) {
+                                    return (
+                                      <div key={i} className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200 group">
+                                        <img src={url} alt={`Fotografie ${i + 1}`} className="w-full h-full object-cover" />
+                                        {i === 0 && (
+                                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-widest bg-[#2563EB] text-white">COVER</span>
+                                        )}
+                                        <button
+                                          onClick={() => removeImage(i)}
+                                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition opacity-0 group-hover:opacity-100"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+                                  if (isUp && i === filled) {
+                                    return (
+                                      <div key={i} className="aspect-square rounded-xl border-2 border-blue-300 bg-blue-50 flex items-center justify-center">
+                                        <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full" />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      key={i}
+                                      onClick={() => fileInputRef.current?.click()}
+                                      disabled={filled >= 10}
+                                      className={cn(
+                                        'aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-all',
+                                        i === 0
+                                          ? 'border-blue-300 bg-blue-50/50 hover:bg-blue-50 text-blue-400 hover:text-blue-500 hover:border-blue-400'
+                                          : 'border-slate-200 bg-slate-50/40 hover:bg-slate-50 text-slate-300 hover:text-slate-400 hover:border-slate-300'
+                                      )}
+                                    >
+                                      {i === 0 ? (
+                                        <>
+                                          <Upload className="w-5 h-5" />
+                                          <span className="text-[10px] font-bold tracking-widest">COVER</span>
+                                        </>
+                                      ) : (
+                                        <span className="text-2xl font-light leading-none">+</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+
+                          {form.imageUrls.length < 3 && (
+                            <p className="text-xs text-slate-400 mb-3">
+                              Mai ai nevoie de {3 - form.imageUrls.length} {3 - form.imageUrls.length === 1 ? 'fotografie' : 'fotografii'} (minim 3)
+                            </p>
+                          )}
+
+                          <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-4 py-3">
+                            💡 JPG / PNG / WebP · max 10 MB per poză · până la 10 fotografii
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Step 4: Price & Publish */}
+                      {s.id === 4 && (
+                        <div className="flex flex-col gap-5">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Preț (RON) <span className="text-red-400">*</span></label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-500">RON</span>
+                              <input type="number" value={form.price} onChange={(e) => { set('price', e.target.value); setErrors((p) => ({ ...p, price: undefined })); }}
+                                placeholder="0" min={1}
+                                className="w-full pl-14 pr-4 py-3 rounded-xl border border-slate-200 text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                            </div>
+                            {errors.price && <ErrorMsg msg={errors.price} />}
+                          </div>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <div className={cn('relative w-11 h-6 rounded-full transition-colors', form.negotiable ? 'bg-blue-600' : 'bg-slate-300')}>
+                              <div className={cn('absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform', form.negotiable ? 'translate-x-5' : 'translate-x-0.5')} />
+                              <input type="checkbox" className="sr-only" checked={form.negotiable} onChange={(e) => set('negotiable', e.target.checked)} />
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-800 text-sm">Prețul este negociabil</p>
+                              <p className="text-xs text-slate-500">Cumpărătorii pot face oferte</p>
+                            </div>
+                          </label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1.5">Oraș <span className="text-red-400">*</span></label>
+                              <select value={form.city} onChange={(e) => { set('city', e.target.value); setErrors((p) => ({ ...p, city: undefined })); }}
+                                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Selectează...</option>
+                                {CITIES.map((c) => <option key={c}>{c}</option>)}
+                              </select>
+                              {errors.city && <ErrorMsg msg={errors.city} />}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1.5">Cartier / zonă</label>
+                              <input type="text" value={form.location} onChange={(e) => set('location', e.target.value)}
+                                placeholder="Ex: Florești"
+                                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Număr de telefon</label>
+                            <input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)}
+                              placeholder="07xx xxx xxx"
+                              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                            <p className="text-xs text-slate-400 mt-1">Vizibil doar pentru cumpărătorii interesați.</p>
+                          </div>
+                          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+                            <p className="text-sm font-semibold text-slate-700 mb-3">Sumar anunț</p>
+                            <div className="flex flex-col gap-1.5 text-sm">
+                              <Row label="Categorie" value={CATEGORIES.find((c) => c.id === form.category)?.name || '—'} />
+                              <Row label="Titlu" value={form.title || '—'} />
+                              <Row label="Stare" value={form.condition || '—'} />
+                              <Row label="Fotografii" value={`${form.imageUrls.length} foto`} />
+                              <Row label="Preț" value={form.price ? `${Number(form.price).toLocaleString('ro-RO')} RON${form.negotiable ? ' (negociabil)' : ''}` : '—'} />
+                              <Row label="Locație" value={form.city || '—'} />
+                            </div>
+                          </div>
+                          {errors.submit && <ErrorMsg msg={errors.submit} />}
+                        </div>
+                      )}
+
+                      {/* Continue button (not shown in last section) */}
+                      {s.id < 4 && (
+                        <button
+                          onClick={() => continueStep(s.id)}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold mt-5 transition-colors text-sm"
+                        >
+                          Continuă
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
-              {uploadingIdx !== null && (
-                <div className="aspect-square rounded-xl border-2 border-blue-300 bg-blue-50 flex items-center justify-center">
-                  <div className="animate-spin w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full" />
+            </div>
+
+            {/* Publish button */}
+            <button
+              onClick={handlePublish}
+              disabled={loading}
+              className="w-full py-4 bg-[#2563EB] hover:bg-blue-700 disabled:opacity-60 text-white font-bold rounded-2xl text-base transition-colors mt-6 flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-5 h-5" />
+              {loading ? 'Se publică...' : 'Publică anunțul'}
+            </button>
+
+          </div>
+        </div>{/* left scroll */}
+
+        {/* Divider */}
+        <div className="hidden lg:block w-px bg-slate-100 shrink-0" />
+
+        {/* RIGHT: Preview (desktop only) */}
+        <div className="hidden lg:flex flex-1 overflow-y-auto bg-[#F5F7FA]">
+          <div className="w-full px-10 py-10">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">Previzualizare anunț</p>
+            <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+              {/* Main image */}
+              <div className="aspect-[4/3] bg-slate-100 relative">
+                {form.imageUrls[previewIdx] ? (
+                  <img src={form.imageUrls[previewIdx]} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-300">
+                    <ImagePlus className="w-16 h-16" />
+                    <span className="text-sm">Nicio fotografie</span>
+                  </div>
+                )}
+                {form.condition && (
+                  <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 backdrop-blur-sm text-slate-700 shadow-sm">
+                    {CONDITION_LABELS[form.condition]}
+                  </span>
+                )}
+                {form.negotiable && (
+                  <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-600 text-white">
+                    Negociabil
+                  </span>
+                )}
+              </div>
+
+              {/* Thumbnails – clickable */}
+              {form.imageUrls.length > 0 && (
+                <div className="flex gap-2 px-4 py-3 border-b border-slate-100 overflow-x-auto">
+                  {form.imageUrls.slice(0, 8).map((url, i) => (
+                    <button key={i} onClick={() => setPreviewIdx(i)}
+                      className={cn(
+                        'w-14 h-14 rounded-xl overflow-hidden shrink-0 border-2 transition-all',
+                        previewIdx === i ? 'border-[#2563EB] shadow-sm' : 'border-transparent hover:border-slate-300'
+                      )}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
                 </div>
               )}
-              {form.imageUrls.length < 10 && uploadingIdx === null && (
-                <button onClick={() => fileInputRef.current?.click()}
-                  className="aspect-square rounded-xl border-2 border-dashed border-slate-300 hover:border-blue-400 bg-slate-50 hover:bg-blue-50 flex flex-col items-center justify-center gap-2 text-slate-400 hover:text-blue-500 transition-all">
-                  <Upload className="w-6 h-6" />
-                  <span className="text-xs font-medium">Adaugă foto</span>
-                </button>
-              )}
-            </div>
 
-            <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-4 py-3">
-              💡 <strong>Sfat:</strong> Poza principală apare în listing. Folosește poze luminoase, din mai multe unghiuri. JPG/PNG/WebP, max 10MB per poză.
-            </p>
+              {/* Details */}
+              <div className="p-6">
+                <p className={cn('font-bold text-slate-900 text-xl leading-snug', !form.title && 'text-slate-300 font-normal text-lg')}>
+                  {form.title || 'Titlul anunțului...'}
+                </p>
+                <p className={cn('text-3xl font-black mt-2', form.price ? 'text-[#2563EB]' : 'text-slate-200')}>
+                  {form.price ? `${Number(form.price).toLocaleString('ro-RO')} RON` : '— RON'}
+                </p>
+                <div className="flex items-center gap-4 mt-4 text-sm text-slate-500 flex-wrap">
+                  {cat && <span className="flex items-center gap-1.5">{CAT_ICONS[cat.icon] ?? '📦'} {cat.name}</span>}
+                  {form.city && (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4" /> {form.city}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        )}
-
-        {/* Step 4: Price & Publish */}
-        {step === 4 && (
-          <div className="flex flex-col gap-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 mb-1">Preț și publicare</h2>
-              <p className="text-sm text-slate-500">Ultimul pas! Setează prețul și publică.</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Preț (RON) <span className="text-red-400">*</span></label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-500">RON</span>
-                <input type="number" value={form.price} onChange={(e) => { set('price', e.target.value); setErrors((p) => ({ ...p, price: undefined })); }}
-                  placeholder="0" min={1}
-                  className="w-full pl-14 pr-4 py-3 rounded-xl border border-slate-200 text-xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-              </div>
-              {errors.price && <ErrorMsg msg={errors.price} />}
-            </div>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <div className={cn('relative w-11 h-6 rounded-full transition-colors', form.negotiable ? 'bg-blue-600' : 'bg-slate-300')}>
-                <div className={cn('absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform', form.negotiable ? 'translate-x-5' : 'translate-x-0.5')} />
-                <input type="checkbox" className="sr-only" checked={form.negotiable} onChange={(e) => set('negotiable', e.target.checked)} />
-              </div>
-              <div>
-                <p className="font-medium text-slate-800 text-sm">Prețul este negociabil</p>
-                <p className="text-xs text-slate-500">Cumpărătorii pot face oferte</p>
-              </div>
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Oraș <span className="text-red-400">*</span></label>
-                <select value={form.city} onChange={(e) => { set('city', e.target.value); setErrors((p) => ({ ...p, city: undefined })); }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Selectează...</option>
-                  {CITIES.map((c) => <option key={c}>{c}</option>)}
-                </select>
-                {errors.city && <ErrorMsg msg={errors.city} />}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Cartier / zonă</label>
-                <input type="text" value={form.location} onChange={(e) => set('location', e.target.value)}
-                  placeholder="Ex: Florești"
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Număr de telefon</label>
-              <input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)}
-                placeholder="07xx xxx xxx"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-              <p className="text-xs text-slate-400 mt-1">Vizibil doar pentru cumpărătorii interesați.</p>
-            </div>
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-              <p className="text-sm font-semibold text-slate-700 mb-3">Sumar anunț</p>
-              <div className="flex flex-col gap-1.5 text-sm">
-                <Row label="Categorie" value={CATEGORIES.find((c) => c.id === form.category)?.name || '—'} />
-                <Row label="Titlu" value={form.title || '—'} />
-                <Row label="Stare" value={form.condition || '—'} />
-                <Row label="Fotografii" value={`${form.imageUrls.length} foto`} />
-                <Row label="Preț" value={form.price ? `${Number(form.price).toLocaleString('ro-RO')} RON${form.negotiable ? ' (negociabil)' : ''}` : '—'} />
-                <Row label="Locație" value={form.city || '—'} />
-              </div>
-            </div>
-            {errors.submit && <ErrorMsg msg={errors.submit} />}
-          </div>
-        )}
-
-        <div className={cn('flex gap-3 mt-6 pt-5 border-t border-slate-100', step === 1 ? 'justify-end' : 'justify-between')}>
-          {step > 1 && (
-            <Button variant="secondary" onClick={prev} className="gap-1.5">
-              <ChevronLeft className="w-4 h-4" /> Înapoi
-            </Button>
-          )}
-          {step < 4 ? (
-            <Button onClick={next} className="gap-1.5">
-              Continuă <ChevronRight className="w-4 h-4" />
-            </Button>
-          ) : (
-            <Button onClick={handlePublish} loading={loading} variant="accent" size="lg" className="gap-2">
-              <Sparkles className="w-4 h-4" /> Publică anunțul
-            </Button>
-          )}
         </div>
-      </div>
 
-      <p className="text-center text-xs text-slate-400 mt-4">💾 Progresul tău este salvat automat</p>
+      </div>
+    </>
+  );
+}
+
+function TopBar() {
+  return (
+    <div className="flex items-center justify-between px-6 h-14 border-b border-slate-100 shrink-0 bg-white">
+      <Link href="/" className="text-lg font-black text-slate-900 tracking-tight">
+        e<span className="text-[#2563EB]">postat</span><span className="text-slate-400 font-normal">.ro</span>
+      </Link>
+      <Link href="/" aria-label="Închide"
+        className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+        <X className="w-5 h-5" />
+      </Link>
     </div>
   );
 }
