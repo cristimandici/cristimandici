@@ -87,19 +87,29 @@ async function enrichAds(
   });
 }
 
-// Horizontal scroll on mobile, responsive grid on desktop
 function AdRow({ ads, favIds }: { ads: Ad[]; favIds: Set<string> }) {
   if (ads.length === 0) return null;
   return (
-    <div className="-mx-4 sm:mx-0">
-      <div className="flex gap-3 overflow-x-auto pb-3 hide-scrollbar px-4 sm:px-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 lg:grid-cols-5 snap-x snap-mandatory">
-        {ads.map(ad => (
-          <div key={ad.id} className="shrink-0 w-[46vw] sm:w-auto snap-start">
-            <AdCard ad={ad} favorited={favIds.has(ad.id)} />
+    <>
+      {/* Mobile: outer overflow:hidden creates BFC so inner max-content doesn't bleed to body */}
+      <div className="sm:hidden -mx-4 overflow-hidden">
+        <div className="overflow-x-scroll overscroll-x-contain hide-scrollbar pb-2 touch-pan-x">
+          <div className="flex gap-3 px-4" style={{ width: 'max-content' }}>
+            {ads.map(ad => (
+              <div key={ad.id} style={{ width: '44vw', flexShrink: 0 }}>
+                <AdCard ad={ad} favorited={favIds.has(ad.id)} />
+              </div>
+            ))}
           </div>
+        </div>
+      </div>
+      {/* Desktop: grid */}
+      <div className="hidden sm:grid grid-cols-3 lg:grid-cols-5 gap-3">
+        {ads.map(ad => (
+          <AdCard key={ad.id} ad={ad} favorited={favIds.has(ad.id)} />
         ))}
       </div>
-    </div>
+    </>
   );
 }
 
