@@ -7,6 +7,7 @@ import {
   BookmarkCheck, RotateCcw, Trash2,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
+import Logo from '@/components/ui/Logo';
 import { CATEGORIES } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
@@ -890,8 +891,8 @@ function TopBar({ onLeave, onSaveDraft, hasDraft, draftSaved }: {
 }) {
   return (
     <div className="flex items-center justify-between px-6 h-14 border-b border-slate-100 shrink-0 bg-white">
-      <Link href="/" className="text-lg font-black text-slate-900 tracking-tight">
-        e<span className="text-[#2563EB]">postat</span><span className="text-slate-400 font-normal">.ro</span>
+      <Link href="/" className="flex items-center">
+        <Logo height={24} />
       </Link>
       <div className="flex items-center gap-2">
         {hasDraft && (
