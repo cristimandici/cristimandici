@@ -306,7 +306,11 @@ function PostPageContent() {
       const hasSubs = !!(form.category && SUBCATEGORIES[form.category]?.length);
       return !!form.category && (!hasSubs || !!form.subcategory);
     }
-    if (s === 2) return form.title.length >= 5 && !!form.condition && form.description.length >= 20;
+    if (s === 2) {
+      const specFields = form.subcategory ? (CATEGORY_FIELDS[form.subcategory] ?? []) : [];
+      const allSpecsFilled = specFields.every(f => !!form.attributes[f.key]?.trim());
+      return form.title.length >= 5 && !!form.condition && form.description.length >= 20 && allSpecsFilled;
+    }
     if (s === 3) return form.imageUrls.length >= 3;
     if (s === 4) return Number(form.price) > 0 && !!form.city;
     return false;
@@ -322,6 +326,10 @@ function PostPageContent() {
       if (!form.title || form.title.length < 5) e.title = 'Titlul trebuie să aibă cel puțin 5 caractere.';
       if (!form.condition) e.condition = 'Selectează starea produsului.';
       if (!form.description || form.description.length < 20) e.description = 'Adaugă o descriere mai detaliată (min. 20 caractere).';
+      if (form.subcategory && CATEGORY_FIELDS[form.subcategory]) {
+        const missing = CATEGORY_FIELDS[form.subcategory].filter(f => !form.attributes[f.key]?.trim());
+        if (missing.length > 0) e.attributes = 'Completează toate specificațiile marcate.';
+      }
     }
     if (s === 3 && form.imageUrls.length < 3) e.images = 'Adaugă cel puțin 3 fotografii 📸';
     if (s === 4) {
@@ -642,35 +650,42 @@ function PostPageContent() {
 
                           {/* Dynamic category-specific fields */}
                           {form.subcategory && CATEGORY_FIELDS[form.subcategory] && (
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 flex flex-col gap-4">
-                              <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Specificații</p>
-                              {CATEGORY_FIELDS[form.subcategory].map((field) => (
-                                <div key={field.key}>
-                                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                                    {field.label}
-                                    {field.unit && <span className="text-slate-400 font-normal ml-1">({field.unit})</span>}
-                                    {field.required && <span className="text-red-400 ml-1">*</span>}
-                                  </label>
-                                  {field.type === 'select' ? (
-                                    <select
-                                      value={form.attributes[field.key] ?? ''}
-                                      onChange={e => set('attributes', { ...form.attributes, [field.key]: e.target.value })}
-                                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
-                                    >
-                                      <option value="">— Alege —</option>
-                                      {field.options!.map(o => <option key={o} value={o}>{o}</option>)}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      type={field.type === 'number' ? 'number' : 'text'}
-                                      value={form.attributes[field.key] ?? ''}
-                                      onChange={e => set('attributes', { ...form.attributes, [field.key]: e.target.value })}
-                                      placeholder={field.placeholder ?? ''}
-                                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                  )}
-                                </div>
-                              ))}
+                            <div className={cn('rounded-2xl border p-4 flex flex-col gap-4', errors.attributes ? 'border-red-200 bg-red-50/30' : 'border-blue-100 bg-blue-50/40')}>
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Specificații</p>
+                                <span className="text-xs text-slate-400">Toate câmpurile sunt obligatorii</span>
+                              </div>
+                              {errors.attributes && <ErrorMsg msg={errors.attributes} />}
+                              {CATEGORY_FIELDS[form.subcategory].map((field) => {
+                                const isEmpty = errors.attributes && !form.attributes[field.key]?.trim();
+                                return (
+                                  <div key={field.key}>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                                      {field.label}
+                                      {field.unit && <span className="text-slate-400 font-normal ml-1">({field.unit})</span>}
+                                      <span className="text-red-400 ml-1">*</span>
+                                    </label>
+                                    {field.type === 'select' ? (
+                                      <select
+                                        value={form.attributes[field.key] ?? ''}
+                                        onChange={e => { set('attributes', { ...form.attributes, [field.key]: e.target.value }); setErrors(p => ({ ...p, attributes: undefined })); }}
+                                        className={cn('w-full px-3 py-2.5 rounded-xl border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700', isEmpty ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200')}
+                                      >
+                                        <option value="">— Alege —</option>
+                                        {field.options!.map(o => <option key={o} value={o}>{o}</option>)}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type={field.type === 'number' ? 'number' : 'text'}
+                                        value={form.attributes[field.key] ?? ''}
+                                        onChange={e => { set('attributes', { ...form.attributes, [field.key]: e.target.value }); setErrors(p => ({ ...p, attributes: undefined })); }}
+                                        placeholder={field.placeholder ?? ''}
+                                        className={cn('w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500', isEmpty ? 'border-red-300 ring-1 ring-red-200' : 'border-slate-200')}
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
 
